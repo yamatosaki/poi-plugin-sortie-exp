@@ -1,0 +1,29 @@
+{
+  "name": "poi-plugin-sortie-exp",
+  "version": "0.1.0",
+  "description": "Per-ship sortie and exercise EXP records for poi",
+  "license": "MIT",
+  "main": "index.js",
+  "keywords": ["poi-plugin", "kancolle", "experience"],
+  "files": ["index.js", "src/"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yamatosaki/poi-plugin-sortie-exp.git"
+  },
+  "homepage": "https://github.com/yamatosaki/poi-plugin-sortie-exp#readme",
+  "bugs": {
+    "url": "https://github.com/yamatosaki/poi-plugin-sortie-exp/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "poiPlugin": {
+    "name": "出击经验记录",
+    "description": "查看本次和上次出击、演习的逐舰经验，以及按开关统计的总累计。",
+    "icon": "fa/line-chart"
+  }
+}

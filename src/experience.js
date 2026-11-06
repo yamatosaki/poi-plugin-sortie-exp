@@ -9,6 +9,9 @@ const byExp = (a, b) => b.exp - a.exp || a.id - b.id
 const isShip = ship => ship && Number.isSafeInteger(ship.id) && ship.id > 0 &&
   typeof ship.name === 'string' && ['main', 'escort'].includes(ship.group) &&
   Number.isSafeInteger(ship.slot) && ship.slot >= 0 && ship.slot < 7
+const normalizeShipSelection = value => Array.isArray(value)
+  ? [...new Set(value.filter(id => Number.isSafeInteger(id) && id > 0))]
+  : null
 
 function makeRun(kind, event) {
   const { deckId, map, node, roster } = event
@@ -63,7 +66,11 @@ function restoreArchive(raw) {
       !Array.isArray(raw.totals) || !raw.totals.every(validRow) || !validLast) {
     throw new Error('Invalid sortie experience archive')
   }
-  return copy(raw)
+  const restored = copy(raw)
+  if (restored.totalShipSelection !== undefined) {
+    restored.totalShipSelection = normalizeShipSelection(restored.totalShipSelection)
+  }
+  return restored
 }
 
 function createExperience({ load = () => null, save = () => {}, notify = () => {} } = {}) {
@@ -84,6 +91,7 @@ function createExperience({ load = () => null, save = () => {}, notify = () => {
       tracking: archive.tracking,
       totals: archive.totals,
       totalSorties: archive.totalSorties,
+      totalShipSelection: archive.totalShipSelection ?? null,
       storageError,
     }
     notify(view)
@@ -258,6 +266,13 @@ function createExperience({ load = () => null, save = () => {}, notify = () => {
     setTracking(enabled) {
       if (!accountId || readFailed) return
       archive = { ...archive, tracking: Boolean(enabled) }
+      dirty = true
+      persist()
+      update()
+    },
+    setTotalShipSelection(ids) {
+      if (!accountId || readFailed) return
+      archive = { ...archive, totalShipSelection: normalizeShipSelection(ids) }
       dirty = true
       persist()
       update()

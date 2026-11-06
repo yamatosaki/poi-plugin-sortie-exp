@@ -44,8 +44,10 @@ body:not(.bp6-dark):not(.bp5-dark) .pex {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
 }
+.pex-card-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .pex-header { margin-bottom: 16px; }
 .pex .pex-header h2 { font-size: 30px; font-weight: 720; margin-top: 3px; line-height: 1.24; letter-spacing: -.035em; }
 .pex-kicker { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .17em; }
@@ -65,7 +67,7 @@ body:not(.bp6-dark):not(.bp5-dark) .pex {
   color: #fff;
 }
 .pex-button.pex-clear-button:hover:enabled { background: #932032; border-color: #932032; }
-.pex-clear-dialog {
+.pex-clear-dialog, .pex-filter-dialog {
   width: min(360px, calc(100% - 32px));
   padding: 20px;
   background: var(--surface);
@@ -73,12 +75,26 @@ body:not(.bp6-dark):not(.bp5-dark) .pex {
   border: 1px solid var(--line);
   border-radius: 10px;
 }
-.pex-clear-dialog::backdrop { background: rgb(0 0 0 / .55); }
-.pex-clear-dialog h3 { font-size: 18px; font-weight: 680; }
-.pex .pex-clear-dialog p { margin-top: 8px; color: var(--muted); }
+.pex-clear-dialog::backdrop, .pex-filter-dialog::backdrop { background: rgb(0 0 0 / .55); }
+.pex-clear-dialog h3, .pex-filter-dialog h3 { font-size: 18px; font-weight: 680; }
+.pex .pex-clear-dialog p, .pex .pex-filter-dialog p { margin-top: 8px; color: var(--muted); }
 .pex-clear-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .pex-button.pex-clear-confirm { color: var(--danger-text); }
 .pex-button.pex-clear-confirm:hover:enabled { border-color: var(--danger-text); }
+.pex-filter-dialog { width: min(960px, calc(100% - 24px)); padding: clamp(10px, 3vw, 20px); }
+.pex-filter-search {
+  display: block; width: 100%; margin-top: 14px; padding: 7px 10px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); color: var(--text); font: inherit;
+}
+.pex-filter-search:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pex-filter-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.pex-filter-tools > span { margin-right: auto; }
+.pex-filter-list {
+  max-height: min(48vh, 420px); overflow: auto; margin-top: 10px;
+  border: 1px solid var(--line); border-radius: 6px; container-type: inline-size;
+}
+.pex-button.pex-filter-done { border-color: var(--accent); color: var(--accent); }
 .pex-tabs {
   display: flex;
   gap: 27px;
@@ -123,23 +139,33 @@ body:not(.bp6-dark):not(.bp5-dark) .pex {
 .pex-switch[aria-checked="true"]::before { background: #335a52; box-shadow: inset -6px 0 0 var(--done); }
 .pex-card-heading { align-items: baseline; padding: 15px 16px; }
 .pex .pex-card h3 { font-size: 16px; line-height: 1.5; font-weight: 680; }
-.pex-table-scroll { overflow-x: auto; }
 .pex-table {
-  --tile-width: 226px;
   --table-inset: 16px;
+  /* Reserve space for borders, padding, and the optional selection column. */
+  --cell-width: max(1px, calc((100cqi - 3px - var(--selection-width, 0px)) / 3 - 2 * var(--table-inset)));
+  --tile-scale: min(1, calc(var(--cell-width) / 226px));
+  --exp-size: 28.5px;
   width: 100%;
-  min-width: calc(3 * (var(--tile-width) + 2 * var(--table-inset)));
   border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums;
 }
 .pex-table th, .pex-table td { text-align: left; padding: 8px var(--table-inset); }
 .pex-table thead th, .pex-table .pex-fleet th {
   background: var(--raised); color: var(--muted); font-size: 12px; font-weight: 600; white-space: nowrap;
 }
-.pex-table .pex-fleet th { text-align: left; }
-.pex-table td { height: 65px; padding-block: 3px; }
+.pex-table thead th { font-size: min(12px, calc(var(--cell-width) / 5)); }
+.pex-table td {
+  height: min(65px, calc(var(--cell-width) * 58 / 226 + 7px));
+  padding-block: 3px;
+}
 .pex-table tr + tr td { box-shadow: inset 0 1px var(--line); }
 .pex-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--surface), var(--row)); }
 .pex-table tbody tr:hover { background: var(--row); }
+.pex-filter-table { --selection-width: clamp(26px, 5cqi, 40px); }
+.pex-filter-column { width: var(--selection-width); }
+.pex-filter-table thead th { position: sticky; top: 0; z-index: 1; }
+.pex-filter-table .pex-filter-checkbox { padding-inline: 0; text-align: center; }
+.pex-filter-checkbox label { display: grid; min-height: 24px; place-items: center; cursor: pointer; }
+.pex-filter-checkbox input { margin: 0; accent-color: var(--accent); cursor: pointer; }
 .pex .pex-ship-tile {
   display: grid;
   grid-template-columns: 70px 150px;
@@ -147,8 +173,9 @@ body:not(.bp6-dark):not(.bp5-dark) .pex {
   column-gap: 6px;
   align-items: center;
   position: relative;
-  width: var(--tile-width);
+  width: 226px;
   height: 58px;
+  zoom: var(--tile-scale);
   padding: 0;
   border-radius: 0;
   box-shadow: none;
@@ -160,21 +187,24 @@ body:not(.bp6-dark):not(.bp5-dark) .pex {
 }
 .pex-avatar-unavailable { opacity: 0; }
 .pex-ship-tile .ship-avatar { max-width: none; }
-.pex-exp, .pex-share { font-size: 28.5px; font-weight: 700; line-height: 1.25; white-space: nowrap; }
+.pex-exp, .pex-share {
+  font-size: min(var(--exp-size), calc(var(--cell-width) / 7));
+  font-weight: 700; line-height: 1.25; white-space: nowrap;
+}
 .pex-exp { color: var(--value); }
 .pex-share { color: #fff; }
 body:not(.bp6-dark):not(.bp5-dark) .pex-share {
   -webkit-text-stroke: 2px var(--text);
   paint-order: stroke fill;
 }
-.pex-exp small { font-size: 16.5px; font-weight: 650; }
-.pex-exp.pex-missing { color: var(--muted); font-size: 12px; }
+.pex-exp small { font-size: .58em; font-weight: 650; }
+.pex-exp.pex-missing { color: var(--muted); }
+.pex-exp.pex-missing, .pex-exp .pex-muted { font-size: min(12px, calc(var(--cell-width) / 3.5)); }
 .pex .pex-warning { padding: 6px 0; margin-bottom: 9px; color: var(--live); font-size: 12px; }
 .pex-empty { display: grid; gap: 4px; padding: 24px 16px; text-align: center; }
 .pex-empty span { color: var(--muted); font-size: 12px; }
 @container (max-width: 880px) {
-  .pex-table { --table-inset: 8px; }
-  .pex-exp, .pex-share { font-size: 25.5px; }
+  .pex-table { --table-inset: 8px; --exp-size: 25.5px; }
 }
 @container (max-width: 690px) {
   .pex-metric { padding-inline: 9px; }
@@ -187,7 +217,5 @@ body:not(.bp6-dark):not(.bp5-dark) .pex-share {
 @container (max-width: 430px) {
   .pex .pex-header h2 { font-size: 23px; }
   .pex-context { padding-inline: 10px; }
-  .pex-table { --table-inset: 4px; }
-  .pex-exp, .pex-share { font-size: 22.5px; }
-  .pex-exp small { font-size: 13.5px; }
+  .pex-table { --table-inset: 4px; --exp-size: 22.5px; }
 }

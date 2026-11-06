@@ -107,6 +107,30 @@ function createPanel(React, tracker, subscribe, css, {
       details(run.ships, { sum, gameShips }))
   }
 
+  function ClearTotalButton({ accountId, disabled }) {
+    const dialog = React.useRef(null)
+    const titleId = React.useId()
+    const descriptionId = React.useId()
+    const close = () => dialog.current.close()
+    const confirm = () => {
+      close()
+      if (tracker.getSnapshot().accountId === accountId) tracker.clearTotal()
+    }
+
+    return h(React.Fragment, null,
+      button('清零', () => dialog.current.showModal(), {
+        className: 'pex-button pex-clear-button', 'aria-haspopup': 'dialog', disabled,
+      }),
+      h('dialog', {
+        ref: dialog, className: 'pex-clear-dialog', 'aria-labelledby': titleId, 'aria-describedby': descriptionId,
+      },
+      h('h3', { id: titleId }, '是否清零总累计记录？'),
+      h('p', { id: descriptionId }, '将清除当前账号的累计出击场数和经验。'),
+      h('div', { className: 'pex-clear-actions' },
+        button('取消', close, { className: 'pex-button' }),
+        button('确认', confirm, { className: 'pex-button pex-clear-confirm' }))))
+  }
+
   function totalView(view, gameShips) {
     const disabled = !view.accountReady
     const sum = sumExperience(view.totals)
@@ -118,7 +142,7 @@ function createPanel(React, tracker, subscribe, css, {
           button(view.tracking ? '累计开启' : '累计关闭', () => tracker.setTracking(!view.tracking), {
             className: 'pex-switch', role: 'switch', 'aria-label': '累计开关', 'aria-checked': view.tracking, disabled,
           }),
-          button('清零', () => tracker.clearTotal(), { className: 'pex-button', disabled }))),
+          h(ClearTotalButton, { key: view.accountId, accountId: view.accountId, disabled }))),
       details(view.totals, { total: true, sum, gameShips }))
   }
 

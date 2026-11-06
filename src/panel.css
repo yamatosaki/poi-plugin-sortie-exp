@@ -9,6 +9,7 @@
   --accent: #9bc9f6;
   --live: #f3cc7d;
   --done: #8bdbbf;
+  --danger-text: #ff8492;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -33,6 +34,7 @@ body:not(.bp6-dark):not(.bp5-dark) .pex {
   --accent: #145f8a;
   --live: #855a00;
   --done: #116751;
+  --danger-text: #b42336;
 }
 .pex button { font: inherit; cursor: pointer; }
 .pex button:disabled { cursor: default; opacity: .48; }
@@ -57,6 +59,26 @@ body:not(.bp6-dark):not(.bp5-dark) .pex {
 }
 .pex .pex-button, .pex .pex-switch { font-size: 12px; }
 .pex-button:hover:enabled, .pex-switch:hover:enabled { border-color: var(--accent); }
+.pex-button.pex-clear-button {
+  background: #b42336;
+  border-color: #b42336;
+  color: #fff;
+}
+.pex-button.pex-clear-button:hover:enabled { background: #932032; border-color: #932032; }
+.pex-clear-dialog {
+  width: min(360px, calc(100% - 32px));
+  padding: 20px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.pex-clear-dialog::backdrop { background: rgb(0 0 0 / .55); }
+.pex-clear-dialog h3 { font-size: 18px; font-weight: 680; }
+.pex .pex-clear-dialog p { margin-top: 8px; color: var(--muted); }
+.pex-clear-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.pex-button.pex-clear-confirm { color: var(--danger-text); }
+.pex-button.pex-clear-confirm:hover:enabled { border-color: var(--danger-text); }
 .pex-tabs {
   display: flex;
   gap: 27px;

@@ -8,6 +8,7 @@ const noGameSnapshot = () => noShips
 const noGameSubscription = () => () => {}
 const knownExp = value => Number.isSafeInteger(value) && value >= 0
 const positive = value => Number.isSafeInteger(value) && value > 0
+const shipsPerPage = 10
 
 function matchingGameShip(ship, gameShips) {
   const candidate = gameShips[ship.id]
@@ -91,21 +92,39 @@ function createPanel(React, tracker, subscribe, css, {
       })))
   }
 
+  function PaginatedShipTable({ ships, sum, gameShips }) {
+    const [pageIndex, setPageIndex] = React.useState(0)
+    const pageCount = Math.ceil(ships.length / shipsPerPage)
+    const page = Math.min(pageIndex, pageCount - 1)
+    const first = page * shipsPerPage
+    React.useEffect(() => {
+      setPageIndex(index => Math.min(index, pageCount - 1))
+    }, [pageCount])
+    return h(React.Fragment, null,
+      h(ShipTable, { ships: ships.slice(first, first + shipsPerPage), total: true, sum, gameShips }),
+      pageCount > 1 ? h('nav', { className: 'pex-pagination', 'aria-label': '总累计舰娘分页' },
+        button('上一页', () => setPageIndex(page - 1), { className: 'pex-button', disabled: page === 0 }),
+        h('span', { className: 'pex-muted', 'aria-live': 'polite' }, `第 ${page + 1} / ${pageCount} 页`),
+        button('下一页', () => setPageIndex(page + 1), { className: 'pex-button', disabled: page === pageCount - 1 }))
+        : null)
+  }
+
   function metric(label, value, unit) {
     return h('div', { className: 'pex-metric' },
       h('div', { className: 'pex-muted' }, label),
       h('strong', { className: 'pex-metric-value' }, value, unit ? h('small', null, unit) : null))
   }
 
-  function details(ships, { total = false, sum, gameShips, totalCount = ships.length, customize }) {
+  function details(ships, { total = false, sum, gameShips, totalCount = ships.length, customize, pageKey }) {
     const count = ships.length === totalCount ? `${number.format(totalCount)} 艘舰船`
       : `显示 ${number.format(ships.length)} / ${number.format(totalCount)} 艘`
     const empty = totalCount ? '当前未显示任何舰娘' : total ? '暂无累计经验' : '暂无舰船记录'
+    const table = total ? h(PaginatedShipTable, { key: pageKey, ships, sum, gameShips })
+      : h(ShipTable, { ships, fleet: ships.some(ship => ship.group === 'escort'), sum, gameShips })
     return h('section', { className: 'pex-card' },
       h('header', { className: 'pex-card-heading' }, h('h3', null, total ? '逐舰总累计' : '舰队明细'),
         h('div', { className: 'pex-card-controls' }, h('span', { className: 'pex-muted' }, count), customize)),
-      ships.length ? h(ShipTable, { ships, fleet: !total && ships.some(ship => ship.group === 'escort'), total, sum, gameShips })
-        : h('div', { className: 'pex-empty' }, h('strong', null, empty)))
+      ships.length ? table : h('div', { className: 'pex-empty' }, h('strong', null, empty)))
   }
 
   function runView(view, gameShips) {
@@ -185,7 +204,8 @@ function createPanel(React, tracker, subscribe, css, {
     const confirm = () => {
       const current = tracker.getSnapshot()
       if (current.accountId === view.accountId && draft !== current.totalShipSelection) {
-        tracker.setTotalShipSelection(draft)
+        const available = new Set(current.totals.map(ship => ship.id))
+        tracker.setTotalShipSelection(draft?.filter(id => available.has(id)) ?? null)
       }
       close()
     }
@@ -230,6 +250,7 @@ function createPanel(React, tracker, subscribe, css, {
           h(ClearTotalButton, { key: view.accountId, accountId: view.accountId, disabled }))),
       details(ships, {
         total: true, sum, gameShips, totalCount: view.totals.length,
+        pageKey: `${view.accountId}:${JSON.stringify(view.totalShipSelection)}`,
         customize: h(TotalShipFilter, { key: view.accountId, view, sum, gameShips }),
       }))
   }

@@ -55,6 +55,15 @@ function createPoiAdapter({ tracker, getState, getShipSnapshot }) {
     account(undefined)
   }
 
+  function reconcileShips(ships) {
+    if (!Array.isArray(ships)) return
+    const owned = new Set(ships.map(ship => positive(ship?.api_id)))
+    if (owned.has(undefined) || owned.size !== ships.length) return
+    const view = tracker.getSnapshot()
+    const recorded = new Set([...view.totals.map(ship => ship.id), ...(view.totalShipSelection ?? [])])
+    emit('removeShips', { accountId: memberId, ids: [...recorded].filter(id => !owned.has(id)) })
+  }
+
   return {
     onResponse(detail) {
       if (!detail?.path?.startsWith(prefix)) return
@@ -90,6 +99,7 @@ function createPoiAdapter({ tracker, getState, getShipSnapshot }) {
         awaitingPortFor = undefined
         account(confirmed)
         emit('port', { accountId: memberId, shipDisplay: shipSnapshot() })
+        reconcileShips(body.api_ship)
         return
       }
       if (!memberId) return
@@ -99,6 +109,18 @@ function createPoiAdapter({ tracker, getState, getShipSnapshot }) {
       const hostMemberId = positive(state?.info?.basic?.api_member_id)
       if (hostMemberId && String(hostMemberId) !== memberId) {
         awaitPort(String(hostMemberId))
+        return
+      }
+      if (path === 'api_req_kousyou/destroyship' || path === 'api_req_kaisou/powerup') {
+        const modernization = path === 'api_req_kaisou/powerup'
+        const target = positive(body.api_ship?.api_id)
+        if (modernization && (!target || (post.api_id != null && positive(post.api_id) !== target))) return
+        const rawIds = modernization ? post.api_id_items : post.api_ship_id
+        if (typeof rawIds !== 'string' && typeof rawIds !== 'number') return
+        const ids = String(rawIds).split(',').map(positive)
+        if (ids.every(id => id !== undefined) && (!modernization || !ids.includes(target))) {
+          emit('removeShips', { accountId: memberId, ids })
+        }
         return
       }
       if (path === 'api_req_map/start' || path === 'api_req_practice/battle') {

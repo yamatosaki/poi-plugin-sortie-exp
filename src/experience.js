@@ -175,6 +175,22 @@ function createExperience({ load = () => null, save = () => {}, notify = () => {
     if (type === 'account') return changeAccount(/^\d+$/.test(event.accountId ?? '') && Number(event.accountId) > 0 ? String(event.accountId) : null)
     if (!accountId) return false
     if (event.accountId != null && String(event.accountId) !== accountId) return false
+    if (type === 'removeShips') {
+      if (!Array.isArray(event.ids) || !event.ids.length ||
+          !event.ids.every(id => Number.isSafeInteger(id) && id > 0)) return false
+      const removed = new Set(event.ids)
+      let pendingChanged = false
+      for (const id of removed) {
+        if (current?.pendingTotals.delete(id)) pendingChanged = true
+      }
+      const totals = archive.totals.filter(ship => !removed.has(ship.id))
+      const selection = archive.totalShipSelection?.filter(id => !removed.has(id))
+      if (totals.length === archive.totals.length &&
+          selection?.length === archive.totalShipSelection?.length) return pendingChanged
+      archive = { ...archive, totals, ...(selection !== undefined && { totalShipSelection: selection }) }
+      dirty = true
+      return true
+    }
     if (type === 'sortie' || type === 'practice') {
       current = makeRun(type, event)
       return true

@@ -223,3 +223,46 @@ test('network interruption requires new navigation before another settlement', (
   assert.equal(t.getSnapshot().last.incomplete, true)
   assert.deepEqual(exp(t.getSnapshot().last.ships), { 101: 140, 102: 70 })
 })
+
+test('removing owned ships purges totals and display choices durably', () => {
+  const t = setup()
+  t.setTracking(true)
+  const clone = { ...roster[0], id: 103, slot: 2 }
+  t.start([...roster, clone])
+  t.result([-1, 360, 120, 240])
+  t.send('port')
+  t.setTotalShipSelection([101, 103])
+  t.setTracking(false)
+  t.send('removeShips', { ids: [101, 101] })
+  assert.deepEqual(exp(t.getSnapshot().totals), { 102: 120, 103: 240 })
+  assert.deepEqual(t.getSnapshot().totalShipSelection, [103])
+  assert.equal(t.getSnapshot().totalSorties, 1)
+  assert.equal(t.getSnapshot().last.ships.length, 3)
+  const reopened = setup(t.store)
+  assert.deepEqual(exp(reopened.getSnapshot().totals), { 102: 120, 103: 240 })
+  assert.deepEqual(reopened.getSnapshot().totalShipSelection, [103])
+})
+
+test('invalid or other-account removals preserve records', () => {
+  const t = setup()
+  t.setTracking(true)
+  t.start()
+  t.result([-1, 360, 120])
+  t.send('port')
+  for (const ids of [undefined, '101', [], [101, -1], [null], [1.5]]) {
+    t.send('removeShips', { ids })
+  }
+  t.send('removeShips', { accountId: '200', ids: [101] })
+  assert.deepEqual(exp(t.getSnapshot().totals), { 101: 360, 102: 120 })
+})
+
+test('a removed ship cannot be restored by pending sortie totals', () => {
+  const t = setup()
+  t.setTracking(true)
+  t.start()
+  t.result([-1, 360, 120])
+  t.send('removeShips', { ids: [101] })
+  t.send('port')
+  assert.deepEqual(exp(t.getSnapshot().totals), { 102: 120 })
+  assert.deepEqual(exp(t.getSnapshot().last.ships), { 101: 360, 102: 120 })
+})

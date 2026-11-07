@@ -48,6 +48,10 @@ body:not(.bp6-dark):not(.bp5-dark) .pex {
   gap: 8px 12px;
 }
 .pex-card-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.pex-pagination {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  padding: 10px 16px; border-top: 1px solid var(--line);
+}
 .pex-header { margin-bottom: 16px; }
 .pex .pex-header h2 { font-size: 30px; font-weight: 720; margin-top: 3px; line-height: 1.24; letter-spacing: -.035em; }
 .pex-kicker { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .17em; }

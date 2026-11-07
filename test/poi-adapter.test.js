@@ -228,3 +228,77 @@ test('avatar projection responds to poi appearance changes and stays stable with
   f.state.fcd = { shiptag: { color: ['#aaccff'] } }
   assert.equal(current()[101].avatarColor, '#aaccff')
 })
+
+function seedTotals(f) {
+  const totals = [101, 102, 201].map((id, slot) => ({
+    id, name: id === 102 ? '吹雪' : '夕張', group: 'main', slot, exp: [360, 120, 240][slot],
+  }))
+  f.archives.set('7', {
+    tracking: true, totalSorties: 3, totals, last: null, totalShipSelection: [101, 201],
+  })
+  f.port()
+}
+
+test('dismantling removes only confirmed owned IDs, including batch dismantling', () => {
+  const f = fixture()
+  seedTotals(f)
+  f.send('api_req_kousyou/destroyship', { api_result: 0 }, { api_ship_id: '101,102' })
+  assert.equal(f.read().totals.length, 3)
+  f.send('api_req_kousyou/destroyship', {}, { api_ship_id: '101,invalid' })
+  assert.equal(f.read().totals.length, 3)
+  delete f.state.info.ships[101]
+  delete f.state.info.ships[102]
+  f.send('api_req_kousyou/destroyship', {}, { api_ship_id: '101,102' })
+  assert.deepEqual(f.read().totals.map(ship => [ship.id, ship.exp]), [[201, 240]])
+  assert.deepEqual(f.read().totalShipSelection, [201])
+  assert.equal(f.archives.get('7').totals.length, 1)
+})
+
+test('modernization removes consumed ships even when the stat improvement fails', () => {
+  const f = fixture()
+  seedTotals(f)
+  f.send('api_req_kaisou/powerup', { api_powerup_flag: 0 }, { api_id: '101', api_id_items: '102,201' })
+  assert.equal(f.read().totals.length, 3)
+  delete f.state.info.ships[102]
+  delete f.state.info.ships[201]
+  f.send('api_req_kaisou/powerup', {
+    api_powerup_flag: 0, api_ship: { api_id: 101, api_ship_id: 10 },
+  }, { api_id: '101', api_id_items: '102,201' })
+  assert.deepEqual(f.read().totals.map(ship => [ship.id, ship.exp]), [[101, 360]])
+  assert.deepEqual(f.read().totalShipSelection, [101])
+})
+
+test('only a complete confirmed port roster reconciles historical records', () => {
+  const f = fixture()
+  seedTotals(f)
+  f.send('api_get_member/ship3', { api_ship_data: [{ api_id: 101 }] })
+  f.send('api_get_member/ship_deck', { api_ship_data: [{ api_id: 101 }] })
+  f.send('api_get_member/ship2', [{ api_id: 101 }])
+  f.send('api_port/port', { api_basic: { api_member_id: '7' }, api_ship: [{}] })
+  f.send('api_port/port', { api_basic: { api_member_id: '7' }, api_ship: [{ api_id: 101 }, { api_id: 101 }] })
+  assert.equal(f.read().totals.length, 3)
+  f.send('api_port/port', { api_basic: { api_member_id: '7' }, api_ship: [{ api_id: 101, api_ship_id: 11 }] })
+  assert.deepEqual(f.read().totals.map(ship => [ship.id, ship.exp]), [[101, 360]])
+  assert.deepEqual(f.read().totalShipSelection, [101])
+  assert.equal(f.read().totalSorties, 3)
+  f.send('api_port/port', { api_basic: { api_member_id: '7' }, api_ship: [] })
+  assert.deepEqual(f.read().totals, [])
+  assert.deepEqual(f.read().totalShipSelection, [])
+  assert.equal(f.read().totalSorties, 3)
+})
+
+test('returning to port prunes missing ships after settling the sortie', () => {
+  const f = fixture()
+  f.port()
+  f.tracker.setTracking(true)
+  f.start()
+  f.send('api_req_sortie/battle')
+  f.send('api_req_sortie/battleresult', { api_get_ship_exp: [-1, 360, -1, 120] })
+  f.send('api_port/port', { api_basic: { api_member_id: '7' }, api_ship: [{ api_id: 102 }] })
+  assert.deepEqual(f.read().totals.map(ship => [ship.id, ship.exp]), [[102, 120]])
+  assert.equal(f.read().last.ships.length, 2)
+  f.state.info.basic.api_member_id = '8'
+  f.send('api_req_kousyou/destroyship', {}, { api_ship_id: '102' })
+  assert.equal(f.read().accountId, null)
+  assert.deepEqual(f.archives.get('7').totals.map(ship => ship.id), [102])
+})

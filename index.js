@@ -2,6 +2,7 @@
 
 const fs = require('node:fs')
 const path = require('node:path')
+const { pathToFileURL } = require('node:url')
 const { createExperience } = require('./src/experience')
 const { createPoiAdapter, storagePath } = require('./src/poi-adapter')
 const { createPanel } = require('./src/panel')
@@ -11,6 +12,9 @@ const { ShipAvatar, Gradient, ShipBasic, ShipName, ShipSubText, ShipLabel } =
   require(path.join(window.ROOT, 'views', 'components', 'ship-parts', 'styled-components'))
 const { selectShipAvatarColor } = require(path.join(window.ROOT, 'views', 'utils', 'game-utils'))
 const { useTranslation } = require(path.join(window.ROOT, 'node_modules', 'react-i18next'))
+
+const resourceIcons = Object.fromEntries(Object.entries({ fuel: 1, ammo: 2, steel: 3, bauxite: 4, buckets: 6 })
+  .map(([kind, id]) => [kind, pathToFileURL(path.join(window.ROOT, 'assets', 'img', 'material', `0${id}.png`)).href]))
 
 const listeners = new Set()
 const tracker = createExperience({
@@ -53,6 +57,6 @@ exports.reactClass = createPanel(
   require('react'), tracker, subscribe,
   fs.readFileSync(path.join(__dirname, 'src', 'panel.css'), 'utf8'),
   { ShipAvatar, Gradient, ShipBasic, ShipName, ShipSubText, ShipLabel, useTranslation,
-    subscribeGame: store.subscribe, getGameSnapshot },
+    subscribeGame: store.subscribe, getGameSnapshot, resourceIcons },
 )
 exports.windowMode = false

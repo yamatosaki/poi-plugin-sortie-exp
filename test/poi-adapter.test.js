@@ -52,12 +52,12 @@ test('poi responses preserve roster holes and reject replayed navigation', () =>
   f.port()
   f.start(11)
   f.send('api_req_sortie/battle', { api_deck_id: 1 })
-  f.send('api_req_sortie/battleresult', { api_get_ship_exp: [-1, 120, -1, 50] })
+  f.send('api_req_sortie/battleresult', { api_get_ship_exp: [-1, 120, -1, 50], api_mvp: 3 })
   f.start(11)
   f.port()
   assert.equal(f.read().last.map, '5-3')
-  assert.deepEqual(f.read().last.ships.map(ship => [ship.id, ship.name, ship.exp]), [
-    [101, '夕張', 120], [102, '吹雪', 50],
+  assert.deepEqual(f.read().last.ships.map(ship => [ship.id, ship.name, ship.exp, ship.mvpCount]), [
+    [101, '夕張', 120, 0], [102, '吹雪', 50, 1],
   ])
 })
 
@@ -71,9 +71,9 @@ test('practice uses the selected single fleet and rejects a conflicting result d
   assert.equal(f.read().last, null)
   f.send('api_req_practice/battle', { api_deck_id: 2 })
   f.send('api_req_practice/midnight_battle', {})
-  f.send('api_req_practice/battle_result', { api_get_ship_exp: [-1, 180] })
+  f.send('api_req_practice/battle_result', { api_get_ship_exp: [-1, 180], api_mvp: 1 })
   assert.equal(f.read().totalSorties, 1)
-  assert.deepEqual(f.read().last.ships.map(ship => [ship.id, ship.exp]), [[201, 180]])
+  assert.deepEqual(f.read().last.ships.map(ship => [ship.id, ship.exp, ship.mvpCount]), [[201, 180, 1]])
 })
 
 test('combined result and acknowledged evacuation use the original positions', () => {
@@ -83,18 +83,18 @@ test('combined result and acknowledged evacuation use the original positions', (
   f.start()
   f.send('api_req_combined_battle/battle_water')
   f.send('api_req_combined_battle/battleresult', {
-    api_get_ship_exp: [-1, 20, -1, 30], api_get_ship_exp_combined: [-1, 60],
+    api_get_ship_exp: [-1, 20, -1, 30], api_get_ship_exp_combined: [-1, 60], api_mvp: 1, api_mvp_combined: 1,
   })
   f.state.sortie.escapedPos = [6]
   f.send('api_req_combined_battle/goback_port')
   f.send('api_req_map/next', { api_no: 2 })
   f.send('api_req_combined_battle/ec_midnight_battle')
   f.send('api_req_combined_battle/battleresult', {
-    api_get_ship_exp: [-1, 5, -1, 6], api_get_ship_exp_combined: [-1, -1],
+    api_get_ship_exp: [-1, 5, -1, 6], api_get_ship_exp_combined: [-1, -1], api_mvp: 3,
   })
   f.port()
-  assert.deepEqual(f.read().last.ships.map(ship => [ship.id, ship.exp, ship.retreated]), [
-    [101, 25, false], [102, 36, false], [201, 60, true],
+  assert.deepEqual(f.read().last.ships.map(ship => [ship.id, ship.exp, ship.retreated, ship.mvpCount]), [
+    [101, 25, false, 1], [102, 36, false, 1], [201, 60, true, 1],
   ])
 })
 
@@ -238,6 +238,83 @@ function seedTotals(f) {
   })
   f.port()
 }
+
+test('confirmed Poi responses settle supply and repairs from the state before the Redux update', () => {
+  const f = fixture()
+  const first = { ...f.state.info.ships[101], api_id: 101, api_fuel: 20, api_bull: 20,
+    api_slot: [-1], api_onslot: [0], api_ndock_item: [6, 12] }
+  const second = { ...f.state.info.ships[102], api_id: 102, api_fuel: 20, api_bull: 20,
+    api_slot: [-1], api_onslot: [0], api_ndock_item: [0, 0] }
+  f.state.info.ships = { 101: first, 102: second }
+  f.state.const.$ships[10] = { ...f.state.const.$ships[10], api_fuel_max: 20, api_bull_max: 20, api_maxeq: [0] }
+  f.state.const.$ships[20] = { ...f.state.const.$ships[20], api_fuel_max: 20, api_bull_max: 20, api_maxeq: [0] }
+  f.state.info.resources = [100, 100, 100, 100, 0, 10]
+  const visitPort = () => f.send('api_port/port', {
+    api_basic: { api_member_id: '7' }, api_ship: Object.values(f.state.info.ships),
+    api_material: f.state.info.resources.map((api_value, i) => ({ api_id: i + 1, api_value })),
+  })
+  visitPort()
+  f.tracker.setTracking(true)
+  f.start()
+  f.send('api_req_sortie/battle')
+  f.send('api_req_sortie/battleresult', { api_get_ship_exp: [-1, 90, -1, 45], api_mvp: 1 })
+  const depleted = { ...first, api_fuel: 15, api_bull: 13 }
+  f.state.info.ships = { 101: depleted, 102: second }
+  visitPort()
+  assert.deepEqual(f.read().resources.pending, { fuel: 5, ammo: 7, steel: 0, bauxite: 0, buckets: 0 })
+
+  f.state.info.ships = { 101: first, 102: second }
+  f.state.info.resources = [95, 93, 100, 100, 0, 10]
+  const supply = { api_ship: [first], api_material: [95, 93, 100, 100] }
+  f.send('api_req_hokyu/charge', supply, { api_id_items: '101' }, 100)
+  f.send('api_req_hokyu/charge', supply, { api_id_items: '101' }, 100)
+  assert.deepEqual(f.read().resources.byShip[101].supply, { fuel: 5, ammo: 7, steel: 0, bauxite: 0, buckets: 0 })
+
+  f.state.info.ships = { 101: { ...first, api_nowhp: first.api_maxhp }, 102: second }
+  f.state.info.resources = [89, 93, 88, 100, 0, 9]
+  const repair = { api_ship_id: '101', api_ndock_id: '1', api_highspeed: '1' }
+  f.send('api_req_nyukyo/start', {}, repair, 101)
+  f.send('api_req_nyukyo/start', {}, repair, 101)
+  assert.deepEqual(f.read().resources.confirmed, { fuel: 11, ammo: 7, steel: 12, bauxite: 0, buckets: 1 })
+  assert.equal(f.archives.get('7').resourceLedger != null, true)
+
+  f.adapter.reset()
+  assert.equal(f.read().resources.hasData, false)
+  visitPort()
+  assert.equal(f.read().resources.confirmed.buckets, 1)
+  f.state.info.basic = { api_member_id: '8' }
+  f.port('8')
+  assert.equal(f.read().resources.hasData, false)
+  f.state.info.basic = { api_member_id: '7' }
+  visitPort()
+  assert.equal(f.read().resources.confirmed.buckets, 1)
+  f.tracker.clearTotal()
+  assert.equal(f.read().resources.hasData, false)
+  assert.equal(f.archives.get('7').resourceLedger, undefined)
+  assert.equal(f.read().last.ships[0].mvpCount, 1)
+})
+
+test('confirmed port roster also prunes costs recorded for a removed ship before its first sortie', () => {
+  const f = fixture()
+  const zeros = { fuel: 0, ammo: 0, steel: 0, bauxite: 0, buckets: 0 }
+  const row = { id: 101, name: '夕張', group: 'main', slot: 0, exp: 100 }
+  f.archives.set('7', {
+    tracking: true, totalSorties: 1, totals: [row], last: null,
+    resourceLedger: { version: 1, incomplete: false, unallocated: zeros, ships: [
+      { id: 101, supply: zeros, repair: { ...zeros, buckets: 1 }, pending: zeros, incomplete: false },
+      { id: 201, supply: zeros, repair: { ...zeros, buckets: 2 }, pending: zeros, incomplete: false },
+    ] },
+  })
+  f.port()
+  assert.deepEqual(f.read().resources.shipIds, [101, 201])
+  assert.equal(f.read().resources.confirmed.buckets, 1)
+  f.send('api_port/port', { api_basic: { api_member_id: '7' }, api_ship: [{ api_id: 101 }] })
+  assert.deepEqual(f.read().resources.shipIds, [101])
+  f.send('api_req_kousyou/destroyship', {}, { api_ship_id: '101' })
+  assert.equal(f.read().resources.hasData, false)
+  assert.deepEqual(f.read().totals, [])
+  assert.equal(f.archives.get('7').resourceLedger, undefined)
+})
 
 test('dismantling removes only confirmed owned IDs, including batch dismantling', () => {
   const f = fixture()

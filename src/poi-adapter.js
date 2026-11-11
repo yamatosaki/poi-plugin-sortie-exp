@@ -36,10 +36,25 @@ function deckRoster(state, deckId, group) {
   })
 }
 
+function resourceState(state) {
+  const { info, const: master } = state ?? {}
+  return {
+    owner: positive(info?.basic?.api_member_id),
+    ships: info?.ships,
+    masterShips: master?.$ships,
+    slotItems: info?.equips,
+    masterSlotItems: master?.$equips,
+    fleets: info?.fleets,
+    repairDocks: info?.repairs,
+    resources: info?.resources,
+  }
+}
+
 function createPoiAdapter({ tracker, getState, getShipSnapshot }) {
   let memberId
   let awaitingPortFor
   let combined = false
+  let previousState = resourceState(getState())
   const seen = new Set()
   const emit = (type, data) => tracker.handle({ type, ...data })
   const shipSnapshot = getShipSnapshot ?? createShipProjection(getState, () => memberId)
@@ -52,6 +67,7 @@ function createPoiAdapter({ tracker, getState, getShipSnapshot }) {
 
   function awaitPort(id) {
     awaitingPortFor = id
+    previousState = undefined
     account(undefined)
   }
 
@@ -60,7 +76,9 @@ function createPoiAdapter({ tracker, getState, getShipSnapshot }) {
     const owned = new Set(ships.map(ship => positive(ship?.api_id)))
     if (owned.has(undefined) || owned.size !== ships.length) return
     const view = tracker.getSnapshot()
-    const recorded = new Set([...view.totals.map(ship => ship.id), ...(view.totalShipSelection ?? [])])
+    const recorded = new Set([
+      ...view.totals.map(ship => ship.id), ...(view.totalShipSelection ?? []), ...(view.resources?.shipIds ?? []),
+    ])
     emit('removeShips', { accountId: memberId, ids: [...recorded].filter(id => !owned.has(id)) })
   }
 
@@ -91,6 +109,15 @@ function createPoiAdapter({ tracker, getState, getShipSnapshot }) {
         if (id && String(id) !== memberId) awaitPort(String(id))
         return
       }
+      // Poi dispatches to Redux before game.response. The previous response's
+      // immutable state contains the stock and dock data before that change.
+      const state = getState()
+      const capture = {
+        path, body, post,
+        before: previousState?.owner != null && String(previousState.owner) === memberId ? previousState : {},
+        at: Number.isFinite(detail.time) ? detail.time : Date.now(),
+      }
+      previousState = resourceState(state)
       if (path === 'api_port/port') {
         const id = positive(body.api_basic?.api_member_id)
         if (!id) return
@@ -98,14 +125,13 @@ function createPoiAdapter({ tracker, getState, getShipSnapshot }) {
         if (awaitingPortFor && awaitingPortFor !== confirmed) return
         awaitingPortFor = undefined
         account(confirmed)
-        emit('port', { accountId: memberId, shipDisplay: shipSnapshot() })
+        emit('port', { accountId: memberId, shipDisplay: shipSnapshot(), capture })
         reconcileShips(body.api_ship)
         return
       }
       if (!memberId) return
 
       // Poi updates Redux before emitting game.response, including for account changes.
-      const state = getState()
       const hostMemberId = positive(state?.info?.basic?.api_member_id)
       if (hostMemberId && String(hostMemberId) !== memberId) {
         awaitPort(String(hostMemberId))
@@ -114,12 +140,13 @@ function createPoiAdapter({ tracker, getState, getShipSnapshot }) {
       if (path === 'api_req_kousyou/destroyship' || path === 'api_req_kaisou/powerup') {
         const modernization = path === 'api_req_kaisou/powerup'
         const target = positive(body.api_ship?.api_id)
-        if (modernization && (!target || (post.api_id != null && positive(post.api_id) !== target))) return
         const rawIds = modernization ? post.api_id_items : post.api_ship_id
-        if (typeof rawIds !== 'string' && typeof rawIds !== 'number') return
-        const ids = String(rawIds).split(',').map(positive)
-        if (ids.every(id => id !== undefined) && (!modernization || !ids.includes(target))) {
-          emit('removeShips', { accountId: memberId, ids })
+        const ids = typeof rawIds === 'string' || typeof rawIds === 'number' ? String(rawIds).split(',').map(positive) : []
+        const validTarget = !modernization || (target && !ids.includes(target) && (post.api_id == null || positive(post.api_id) === target))
+        if (validTarget && ids.length && ids.every(id => id !== undefined)) {
+          emit('removeShips', { accountId: memberId, ids, capture })
+        } else {
+          emit('resource', { capture })
         }
         return
       }
@@ -132,28 +159,35 @@ function createPoiAdapter({ tracker, getState, getShipSnapshot }) {
         emit(isPractice ? 'practice' : 'sortie', {
           deckId, map: getMap(body, post), node: positive(body.api_no),
           roster: main.length ? [...main, ...escort] : [],
-          expectsEscort: combined, incomplete: combined && !escort.length,
+          expectsEscort: combined, incomplete: combined && !escort.length, capture,
         })
       } else if (path === 'api_req_map/next') {
-        emit('next', { map: getMap(body, post), node: positive(body.api_no) })
+        emit('next', { map: getMap(body, post), node: positive(body.api_no), capture })
       } else if (phases.has(path)) {
         const deckId = path.startsWith('api_req_sortie/') ? positive(post.api_deck_id ?? body.api_deck_id) : undefined
         emit('phase', { deckId })
       } else if (path === 'api_req_practice/midnight_battle') {
         emit('practiceNight', { deckId: practiceDeck(body, post) })
       } else if (path === 'api_req_practice/battle_result') {
-        emit('practiceResult', { deckId: practiceDeck(body, post), main: body.api_get_ship_exp, shipDisplay: shipSnapshot() })
+        emit('practiceResult', { deckId: practiceDeck(body, post), main: body.api_get_ship_exp,
+          mvp: body.api_mvp, shipDisplay: shipSnapshot() })
       } else if (path === 'api_req_sortie/battleresult' || path === 'api_req_combined_battle/battleresult') {
-        emit('result', { main: body.api_get_ship_exp, escort: body.api_get_ship_exp_combined })
+        emit('result', { main: body.api_get_ship_exp, escort: body.api_get_ship_exp_combined,
+          mvp: body.api_mvp, escortMvp: body.api_mvp_combined })
       } else if (path === 'api_req_sortie/goback_port' || path === 'api_req_combined_battle/goback_port') {
         const positions = state?.sortie?.escapedPos ?? []
         const slots = positions.filter(slot => Number.isSafeInteger(slot) && slot >= 0).map(slot =>
           combined && slot >= 6 ? { group: 'escort', slot: slot - 6 } : { group: 'main', slot })
         emit('retreat', { slots })
+      } else {
+        emit('resource', { capture })
       }
     },
     reset: () => awaitPort(),
-    interrupt: () => emit('interrupt'),
+    interrupt: () => {
+      previousState = undefined
+      emit('interrupt')
+    },
   }
 }
 

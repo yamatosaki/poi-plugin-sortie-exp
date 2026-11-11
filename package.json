@@ -1,7 +1,7 @@
 {
   "name": "poi-plugin-sortie-exp",
-  "version": "0.1.4",
-  "description": "Per-ship sortie and exercise EXP records for poi",
+  "version": "0.1.5",
+  "description": "Per-ship sortie and exercise EXP, MVP counts, and resource spending for poi",
   "license": "MIT",
   "main": "index.js",
   "keywords": ["poi-plugin", "kancolle", "experience"],
@@ -23,7 +23,7 @@
   },
   "poiPlugin": {
     "name": "出击经验记录",
-    "description": "查看本次和上次出击、演习的逐舰经验，以及按开关统计的总累计。",
+    "description": "查看逐舰出击与演习经验、MVP 次数及累计补给和修理支出。",
     "icon": "fa/line-chart"
   }
 }

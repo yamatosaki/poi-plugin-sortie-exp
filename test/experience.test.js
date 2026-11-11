@@ -17,15 +17,84 @@ function setup(store = new Map()) {
   })
   const send = (type, data = {}) => tracker.handle({ type, ...data })
   const start = (ships = roster) => send('sortie', { deckId: 1, map: '5-3', node: 1, roster: ships })
-  const result = (main, escort) => {
+  const result = (main, escort, mvp, escortMvp) => {
     send('phase')
-    send('result', { main, escort })
+    send('result', { main, escort, mvp, escortMvp })
   }
   send('account', { accountId: '100' })
   return { ...tracker, send, start, result, store }
 }
 
 const exp = ships => Object.fromEntries(ships.map(ship => [ship.id, ship.exp]))
+const mvpCounts = ships => Object.fromEntries(ships.map(ship => [ship.id, ship.mvpCount]))
+
+test('MVP keeps live and tracked counts separate through return, restart and clear', () => {
+  const t = setup()
+  t.start()
+  assert.deepEqual(mvpCounts(t.getSnapshot().current.ships), { 101: null, 102: null })
+  t.result([-1, 100, 50], undefined, 1)
+  t.send('result', { main: [-1, 100, 50], mvp: 1 })
+  t.setTracking(true)
+  t.send('next', { node: 2 })
+  t.result([-1, 90, 60], undefined, '2')
+  t.setTracking(false)
+  assert.deepEqual(mvpCounts(t.getSnapshot().current.ships), { 101: 1, 102: 1 })
+  assert.deepEqual(t.getSnapshot().totals, [])
+  t.send('port')
+  const reopened = setup(t.store)
+  assert.deepEqual(mvpCounts(reopened.getSnapshot().last.ships), { 101: 1, 102: 1 })
+  assert.deepEqual(mvpCounts(reopened.getSnapshot().totals), { 101: 0, 102: 1 })
+
+  reopened.setTracking(true)
+  reopened.start()
+  reopened.result([-1, 50, 100], undefined, 2)
+  reopened.clearTotal()
+  reopened.send('port')
+  assert.deepEqual(reopened.getSnapshot().totals, [])
+  assert.equal(reopened.getSnapshot().totalSorties, 0)
+  assert.deepEqual(mvpCounts(reopened.getSnapshot().last.ships), { 101: 0, 102: 1 })
+})
+
+test('combined MVP uses the original slots independently and skips retreated ships', () => {
+  const t = setup()
+  const escortMate = { ...escort, id: 202, slot: 1 }
+  const seventh = { ...roster[0], id: 107, slot: 6 }
+  t.setTracking(true)
+  t.start([...roster, seventh, escort, escortMate])
+  t.result([-1, 10, 20, 0, 0, 0, 0, 70], [-1, 30, 40], 7, 2)
+  t.send('retreat', { ids: [202] })
+  t.send('next', { node: 2 })
+  t.result([-1, 10, 20, 0, 0, 0, 0, 10], [-1, 30, -1], 2, 2)
+  t.send('next', { node: 3 })
+  t.result([-1, 10, 20, 0, 0, 0, 0, 10], [-1, 30, -1], 8, 1)
+  t.send('port')
+  assert.deepEqual(mvpCounts(t.getSnapshot().last.ships), { 101: 0, 102: 1, 107: 1, 201: 1, 202: 1 })
+  t.send('removeShips', { ids: [202] })
+  assert.deepEqual(mvpCounts(t.getSnapshot().totals), { 101: 0, 102: 1, 107: 1, 201: 1 })
+})
+
+test('legacy unknown MVP stays unknown until a confirmed exercise with the matching fleet', () => {
+  const t = setup(new Map([['100', {
+    tracking: true, totalSorties: 1, totals: roster.map(ship => ({ ...ship, exp: 55 })),
+    last: { kind: 'practice', deckId: 1, battles: 1, ships: roster.map(ship => ({ ...ship, exp: 55 })) },
+  }]]))
+  assert.deepEqual(mvpCounts(t.getSnapshot().last.ships), { 101: null, 102: null })
+  assert.deepEqual(mvpCounts(t.getSnapshot().totals), { 101: null, 102: null })
+  t.send('practice', { deckId: 1, roster })
+  t.send('practiceResult', { deckId: 2, main: [-1, 40, 50], mvp: 1 })
+  assert.equal(t.getSnapshot().totalSorties, 1)
+  t.send('practice', { deckId: 1, roster })
+  t.send('practiceResult', { deckId: 1, mvp: 2 })
+  t.send('port')
+  assert.equal(t.getSnapshot().totalSorties, 2)
+  assert.equal(t.getSnapshot().last.incomplete, true)
+  assert.deepEqual(exp(t.getSnapshot().last.ships), { 101: null, 102: null })
+  assert.deepEqual(mvpCounts(t.getSnapshot().totals), { 101: 0, 102: 1 })
+  assert.deepEqual(exp(t.getSnapshot().totals), { 101: 55, 102: 55 })
+  t.send('account', { accountId: '200' })
+  assert.deepEqual(t.getSnapshot().totals, [])
+  assert.deepEqual(mvpCounts(setup(t.store).getSnapshot().totals), { 101: 0, 102: 1 })
+})
 
 test('starts at zero, accumulates two battles and commits once at port', () => {
   const t = setup()
